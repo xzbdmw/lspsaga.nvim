@@ -1,7 +1,7 @@
 local api = vim.api
 local saga = {}
 saga.saga_augroup = api.nvim_create_augroup('Lspsaga', { clear = true })
-
+print("init hello")
 local default_config = {
   ui = {
     border = 'rounded',
