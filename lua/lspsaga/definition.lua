@@ -338,6 +338,7 @@ end
 
 -- override the default the defintion handler
 function def:goto_handler(result, context, args)
+  print("hello")
   local client = lsp.get_client_by_id(context.client_id)
   if not client then
     return
