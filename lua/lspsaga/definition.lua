@@ -107,11 +107,76 @@ function def:apply_maps(bufnr)
 end
 
 function def:delete_maps(bufnr)
+  print("I'm deletting keymaps")
   for _, map in pairs(config.definition.keys) do
     for _, key in ipairs(util.as_table(map)) do
       pcall(buf_del_keymap, bufnr, 'n', key)
     end
   end
+
+  local function get_non_float_win_count()
+    local window_count = #vim.api.nvim_list_wins()
+    for _, win in pairs(vim.api.nvim_list_wins()) do
+      local success, win_config = pcall(vim.api.nvim_win_get_config, win)
+      if success then
+        if win_config.relative ~= '' then
+          window_count = window_count - 1
+        end
+      end
+    end
+    return window_count
+  end
+  vim.keymap.set('n', '<Tab>', function()
+    local cursor_pos = vim.api.nvim_win_get_cursor(0) -- 获取当前窗口的光标位置
+    local line_num = cursor_pos[1] -- 光标所在的行号
+    local fold_start = vim.fn.foldclosed(line_num)
+    if fold_start == -1 then
+      local flag = false
+      local window_count = get_non_float_win_count()
+      local current_win = vim.api.nvim_get_current_win()
+      for _, win in pairs(vim.api.nvim_list_wins()) do
+        local success, win_config = pcall(vim.api.nvim_win_get_config, win)
+        -- print(vim.inspect(win_config))
+        if success then
+          -- if this win is float_win
+          if win_config.relative ~= '' then
+            -- if this win isn't current_win
+            if current_win ~= win and win_config.zindex ~= 20 and win_config.zindex ~= 60 then
+              -- change flag to indicate that we have change current_win, so no need to cycle
+              flag = true
+              vim.api.nvim_set_current_win(win)
+            end
+            break
+          end
+        end
+      end
+      if flag == false and window_count ~= 2 then
+        vim.cmd([[
+  let w0 = winnr()
+  let nok = 1
+  while nok
+    exe 'wincmd ' 'w'
+    let w = winnr()
+    let n = bufname('%')
+    let nok = (n=~'NVimTree') && (w != w0)
+  endwhile
+]])
+      elseif flag == false then
+        vim.cmd([[
+  let w0 = winnr()
+  let nok = 1
+  while nok
+    exe 'wincmd ' 'w'
+    let w = winnr()
+    let n = bufname('%')
+    let nok = (n=~'NVmTree') && (w != w0)
+  endwhile
+]])
+      end
+    else
+      require('ufo').peekFoldedLinesUnderCursor()
+    end
+  end)
 end
 
 function def:create_win(bufnr, root_dir)
@@ -150,6 +215,7 @@ function def:clean_event()
   api.nvim_create_autocmd('WinClosed', {
     group = api.nvim_create_augroup('SagaPeekdefinition', { clear = true }),
     callback = function(args)
+      print('WinClosed')
       local curwin = tonumber(args.match)
       local index = get_node_idx(self.list, curwin)
       if not index then
