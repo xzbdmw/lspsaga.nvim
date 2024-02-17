@@ -5,6 +5,7 @@ local win = require('lspsaga.window')
 local buf_del_keymap = api.nvim_buf_del_keymap
 local beacon = require('lspsaga.beacon').jump_beacon
 local def = {}
+print("hello")
 def.__index = def
 
 -- a double linked list for store the node infor
