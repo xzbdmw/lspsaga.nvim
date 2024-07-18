@@ -378,6 +378,17 @@ function diag:render_diagnostic_window(entry, option)
 
   local close_autocmds = { 'CursorMoved', 'InsertEnter' }
   vim.defer_fn(function()
+    api.nvim_create_autocmd('User', {
+      once = true,
+      pattern = 'ESC',
+      callback = function()
+        if self.main_buf ~= nil and api.nvim_buf_is_valid(self.main_buf) then
+          preview_win_close()
+          util.close_win(self.winid)
+          self:clean_data()
+        end
+      end,
+    })
     self.auid = api.nvim_create_autocmd(close_autocmds, {
       buffer = self.main_buf,
       once = true,
@@ -418,6 +429,7 @@ function diag:move_cursor(entry)
     jump_beacon({ entry.lnum, entry.col or entry.end_col }, width)
     -- Open folds under the cursor
     vim.cmd('normal! zv')
+    require('config.utils').adjust_view(0, 3)
   end)
 
   self:render_diagnostic_window(entry)

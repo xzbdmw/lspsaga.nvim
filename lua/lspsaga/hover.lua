@@ -55,7 +55,7 @@ function hover:open_floating_preview(content, option_fn)
 
   local float_option = {
     width = math.min(max_float_width, max_content_len),
-    zindex = 80,
+    zindex = 60,
   }
 
   local in_codeblock = false

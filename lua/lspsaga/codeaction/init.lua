@@ -65,7 +65,6 @@ function act:action_callback(tuples, enriched_ctx)
   if config.ui.title then
     float_opt.title = {
       { config.ui.code_action .. ' Code Actions', 'Title' },
-      { ' ' .. #content .. ' ', 'SagaCount' },
     }
   end
 
@@ -86,6 +85,8 @@ function act:action_callback(tuples, enriched_ctx)
     :winopt({
       ['conceallevel'] = 2,
       ['concealcursor'] = 'niv',
+      ['cursorline'] = config.code_action.cursorline,
+      ['cursorlineopt'] = 'both',
     })
     :winhl('SagaNormal', 'SagaBorder')
     :wininfo()
@@ -100,6 +101,7 @@ function act:action_callback(tuples, enriched_ctx)
     end,
   })
 
+  vim.opt.winhl:append('CursorLine:CodeActionCursorLine')
   for i = 1, #content, 1 do
     local row = i - 1
     local col = content[i]:find('%]')
@@ -192,7 +194,11 @@ function act:send_request(main_buf, options, callback)
 
     for client_id, item in pairs(results) do
       for _, action in ipairs(item.result or {}) do
+        if action.title=="Browse gopls feature documentation" then
+          goto continue
+        end
         action_tuples[#action_tuples + 1] = { client_id, action }
+          ::continue::
       end
     end
 
@@ -305,7 +311,11 @@ function act:apply_action_keys(action_tuples, enriched_ctx)
     self:do_code_action(action, client, enriched_ctx)
   end, { buffer = self.action_bufnr })
 
-  map_keys('n', config.code_action.keys.quit, function()
+  map_keys('n', 'q', function()
+    self:close_action_window()
+    clean_ctx()
+  end, { buffer = self.action_bufnr })
+  map_keys('n', '<esc>', function()
     self:close_action_window()
     clean_ctx()
   end, { buffer = self.action_bufnr })

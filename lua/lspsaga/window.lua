@@ -60,7 +60,7 @@ local function make_floating_popup_options(opts)
     style = 'minimal',
     width = opts.width,
     border = border,
-    zindex = opts.zindex or 50,
+    zindex = 60,
     title = title,
     title_pos = title_pos,
     noautocmd = opts.noautocmd or false,
