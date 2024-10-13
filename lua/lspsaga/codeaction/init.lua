@@ -64,7 +64,7 @@ function act:action_callback(tuples, enriched_ctx)
 
   if config.ui.title then
     float_opt.title = {
-      { config.ui.code_action .. ' Code Actions', 'Title' },
+      { ' Code Actions', 'Title' },
     }
   end
 
@@ -315,10 +315,7 @@ function act:apply_action_keys(action_tuples, enriched_ctx)
     self:close_action_window()
     clean_ctx()
   end, { buffer = self.action_bufnr })
-  map_keys('n', '<esc>', function()
-    self:close_action_window()
-    clean_ctx()
-  end, { buffer = self.action_bufnr })
+  map_keys('n', '<esc>', 'q', { buffer = self.action_bufnr,remap = true })
 end
 
 function act:num_shortcut(bufnr, action_tuples, enriched_ctx)
@@ -360,6 +357,7 @@ function act:code_action(options)
 end
 
 function act:close_action_window()
+  _G.hide_cursor(function() end,30)
   if self.action_winid and api.nvim_win_is_valid(self.action_winid) then
     api.nvim_win_close(self.action_winid, true)
   end

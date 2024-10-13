@@ -73,7 +73,7 @@ local function get_action_diff(main_buf, tuple)
   api.nvim_buf_delete(tmp_buf, { force = true })
   local diff = vim.diff(table.concat(lines), table.concat(data), {
     algorithm = 'minimal',
-    ctxlen = 0,
+    ctxlen = 3,
   })
 
   if #diff == 0 then
@@ -96,8 +96,8 @@ local function create_preview_win(content, main_winid, main_buf)
   local minus_lines = {}
 
   -- 处理内容，去掉 '+' 和 '-'，并记录缩进信息
+  local original_content = {} -- 存储原始的未处理的行
   local processed_content = {}
-  local min_indent = nil -- 用于存储最小缩进（以空格为单位）
   local indents = {} -- 记录每行的缩进量（以空格为单位）
 
   -- 获取 'tabstop' 设置，默认为 4
@@ -121,7 +121,7 @@ local function create_preview_win(content, main_winid, main_buf)
     return result
   end
 
-  -- 第一步：去掉 '+' 和 '-'，并找到最小缩进
+  -- 第一步：去掉 '+' 和 '-'，并收集原始内容
   for i, line in ipairs(content) do
     local first_char = line:sub(1, 1)
     if first_char == '+' then
@@ -131,7 +131,24 @@ local function create_preview_win(content, main_winid, main_buf)
       line = line:sub(2)
       table.insert(minus_lines, i)
     end
+    original_content[i] = line
+  end
 
+  -- 第二步：移除 `original_content` 末尾的空行
+  while #original_content > 0 and original_content[#original_content]:match('^%s*$') do
+    table.remove(original_content, #original_content)
+    -- 需要同时调整 `plus_lines` 和 `minus_lines`
+    if plus_lines[#plus_lines] == #original_content + 1 then
+      table.remove(plus_lines, #plus_lines)
+    end
+    if minus_lines[#minus_lines] == #original_content + 1 then
+      table.remove(minus_lines, #minus_lines)
+    end
+  end
+
+  -- 第三步：重新计算 `min_indent`，并处理内容
+  local min_indent = nil -- 用于存储最小缩进（以空格为单位）
+  for i, line in ipairs(original_content) do
     -- 将制表符展开为空格
     local expanded_line = expand_tabs(line, tabstop)
     processed_content[i] = expanded_line
@@ -142,36 +159,25 @@ local function create_preview_win(content, main_winid, main_buf)
 
     indents[i] = indent_level
 
-    -- 更新最小缩进
-    if min_indent == nil or indent_level < min_indent then
-      min_indent = indent_level
+    -- 更新最小缩进，只考虑非空行
+    if expanded_line:match('%S') then
+      if min_indent == nil or indent_level < min_indent then
+        min_indent = indent_level
+      end
     end
-    ::continue::
   end
 
-  -- 第二步：根据最小缩进调整每行的缩进
+  -- 如果没有非空行，设置最小缩进为 0
+  min_indent = min_indent or 0
+
+  -- 第四步：根据新的 `min_indent` 调整每行的缩进
   for i, line in ipairs(processed_content) do
-    local indent_level = indents[i]
-    local remove_indent = min_indent
-    -- 去掉行首多余的空格
-    local adjusted_line = line:sub(remove_indent + 1)
+    local adjusted_line = line:sub(min_indent + 1)
     processed_content[i] = adjusted_line
   end
 
-  -- **新增步骤**：移除 `processed_content` 末尾的空行
-  while #processed_content > 0 and processed_content[#processed_content]:match('^%s*$') do
-    table.remove(processed_content, #processed_content)
-    -- 需要同时调整 `plus_lines` 和 `minus_lines`
-    if plus_lines[#plus_lines] == #processed_content + 1 then
-      table.remove(plus_lines, #plus_lines)
-    end
-    if minus_lines[#minus_lines] == #processed_content + 1 then
-      table.remove(minus_lines, #minus_lines)
-    end
-  end
-
-  -- 以下是您原来的函数内容，使用处理后的内容
-  local win_conf = api.nvim_win_get_config(main_winid)
+  -- 以下是原来的函数内容，使用处理后的内容
+  local win_conf = vim.api.nvim_win_get_config(main_winid)
   local max_height
   local opt = {
     relative = win_conf.relative,
@@ -182,7 +188,7 @@ local function create_preview_win(content, main_winid, main_buf)
     zindex = 60,
   }
 
-  local max_width = api.nvim_win_get_width(win_conf.win) - win_conf.col - 8
+  local max_width = vim.api.nvim_win_get_width(win_conf.win) - win_conf.col - 8
   local content_width = util.get_max_content_length(processed_content)
   if content_width > max_width then
     opt.width = max_width
@@ -190,7 +196,7 @@ local function create_preview_win(content, main_winid, main_buf)
     opt.width = content_width < win_conf.width and win_conf.width or content_width
   end
 
-  local winheight = api.nvim_win_get_height(win_conf.win)
+  local winheight = vim.api.nvim_win_get_height(win_conf.win)
   if win_conf.anchor:find('^S') then
     opt.row = win_conf.row - win_conf.height - 2
     max_height = win_conf.row - win_conf.height
