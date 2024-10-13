@@ -90,7 +90,87 @@ local preview_buf, preview_winid
 
 ---create a preview window according given window
 ---default is under the given window
-local function create_preview_win(content, main_winid)
+local function create_preview_win(content, main_winid, main_buf)
+  -- 初始化记录 '+' 和 '-' 的行号表
+  local plus_lines = {}
+  local minus_lines = {}
+
+  -- 处理内容，去掉 '+' 和 '-'，并记录缩进信息
+  local processed_content = {}
+  local min_indent = nil -- 用于存储最小缩进（以空格为单位）
+  local indents = {} -- 记录每行的缩进量（以空格为单位）
+
+  -- 获取 'tabstop' 设置，默认为 4
+  local tabstop = vim.api.nvim_buf_get_option(main_buf, 'tabstop') or 4
+
+  -- 定义一个函数，将制表符展开为空格
+  local function expand_tabs(s, tabstop)
+    local result = ''
+    local col = 0
+    for i = 1, #s do
+      local c = s:sub(i, i)
+      if c == '\t' then
+        local spaces = tabstop - (col % tabstop)
+        result = result .. string.rep(' ', spaces)
+        col = col + spaces
+      else
+        result = result .. c
+        col = col + 1
+      end
+    end
+    return result
+  end
+
+  -- 第一步：去掉 '+' 和 '-'，并找到最小缩进
+  for i, line in ipairs(content) do
+    local first_char = line:sub(1, 1)
+    if first_char == '+' then
+      line = line:sub(2)
+      table.insert(plus_lines, i)
+    elseif first_char == '-' then
+      line = line:sub(2)
+      table.insert(minus_lines, i)
+    end
+
+    -- 将制表符展开为空格
+    local expanded_line = expand_tabs(line, tabstop)
+    processed_content[i] = expanded_line
+
+    -- 计算行首空白字符数量（缩进量，以空格为单位）
+    local indent_str = expanded_line:match('^%s*') or ''
+    local indent_level = #indent_str
+
+    indents[i] = indent_level
+
+    -- 更新最小缩进
+    if min_indent == nil or indent_level < min_indent then
+      min_indent = indent_level
+    end
+    ::continue::
+  end
+
+  -- 第二步：根据最小缩进调整每行的缩进
+  for i, line in ipairs(processed_content) do
+    local indent_level = indents[i]
+    local remove_indent = min_indent
+    -- 去掉行首多余的空格
+    local adjusted_line = line:sub(remove_indent + 1)
+    processed_content[i] = adjusted_line
+  end
+
+  -- **新增步骤**：移除 `processed_content` 末尾的空行
+  while #processed_content > 0 and processed_content[#processed_content]:match('^%s*$') do
+    table.remove(processed_content, #processed_content)
+    -- 需要同时调整 `plus_lines` 和 `minus_lines`
+    if plus_lines[#plus_lines] == #processed_content + 1 then
+      table.remove(plus_lines, #plus_lines)
+    end
+    if minus_lines[#minus_lines] == #processed_content + 1 then
+      table.remove(minus_lines, #minus_lines)
+    end
+  end
+
+  -- 以下是您原来的函数内容，使用处理后的内容
   local win_conf = api.nvim_win_get_config(main_winid)
   local max_height
   local opt = {
@@ -101,8 +181,9 @@ local function create_preview_win(content, main_winid)
     focusable = false,
     zindex = 60,
   }
+
   local max_width = api.nvim_win_get_width(win_conf.win) - win_conf.col - 8
-  local content_width = util.get_max_content_length(content)
+  local content_width = util.get_max_content_length(processed_content)
   if content_width > max_width then
     opt.width = max_width
   else
@@ -118,7 +199,7 @@ local function create_preview_win(content, main_winid)
     max_height = winheight - opt.row
   end
 
-  opt.height = math.min(max_height, #content)
+  opt.height = math.min(max_height, #processed_content)
 
   if config.ui.title then
     opt.title = { { 'Action Preview', 'ActionPreviewTitle' } }
@@ -127,15 +208,42 @@ local function create_preview_win(content, main_winid)
 
   preview_buf, preview_winid = win
     :new_float(opt, false, true)
-    :setlines(content)
+    :setlines(processed_content)
     :bufopt({
-      ['filetype'] = 'diff',
+      ['filetype'] = vim.bo[main_buf].filetype,
       ['bufhidden'] = 'wipe',
       ['buftype'] = 'nofile',
       ['modifiable'] = false,
     })
     :winhl('ActionPreviewNormal', 'ActionPreviewBorder')
     :wininfo()
+  vim.b[preview_buf].gitsigns_preview = true
+
+  local ns_id = vim.api.nvim_create_namespace('ActionPreviewLineHL')
+
+  -- 应用行高亮
+  for _, line_num in ipairs(plus_lines) do
+    if line_num <= #processed_content then
+      vim.api.nvim_buf_set_extmark(preview_buf, ns_id, line_num - 1, 0, {
+        line_hl_group = 'GitSignsAddPreview',
+      })
+    end
+  end
+  for _, line_num in ipairs(minus_lines) do
+    if line_num <= #processed_content then
+      vim.api.nvim_buf_set_extmark(preview_buf, ns_id, line_num - 1, 0, {
+        line_hl_group = 'GitSignsDeletePreview',
+      })
+    end
+  end
+end
+
+local function preview_win_close()
+  if preview_winid and api.nvim_win_is_valid(preview_winid) then
+    api.nvim_win_close(preview_winid, true)
+    preview_winid = nil
+    preview_buf = nil
+  end
 end
 
 local function action_preview(main_winid, main_buf, tuple)
@@ -150,29 +258,13 @@ local function action_preview(main_winid, main_buf, tuple)
   end
 
   if not preview_winid or not api.nvim_win_is_valid(preview_winid) then
-    create_preview_win(diff, main_winid)
+    create_preview_win(diff, main_winid, main_buf)
   else
-    --reuse before window
-    vim.bo[preview_buf].modifiable = true
-    api.nvim_buf_set_lines(preview_buf, 0, -1, false, diff)
-    vim.bo[preview_buf].modifiable = false
-    local win_conf = api.nvim_win_get_config(preview_winid)
-    win_conf.height = #diff
-    local new_width = util.get_max_content_length(diff)
-    local main_width = api.nvim_win_get_width(main_winid)
-    win_conf.width = new_width < main_width and main_width or new_width
-    api.nvim_win_set_config(preview_winid, win_conf)
+    preview_win_close()
+    create_preview_win(diff, main_winid, main_buf)
   end
 
   return preview_buf, preview_winid
-end
-
-local function preview_win_close()
-  if preview_winid and api.nvim_win_is_valid(preview_winid) then
-    api.nvim_win_close(preview_winid, true)
-    preview_winid = nil
-    preview_buf = nil
-  end
 end
 
 return {
