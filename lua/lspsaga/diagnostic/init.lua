@@ -102,7 +102,7 @@ function diag:code_action_cb(action_tuples, enriched_ctx)
     :setlines(contents, -1, -1)
     :bufopt('modifiable', false)
 
-  api.nvim_buf_add_highlight(self.bufnr, 0, 'Comment', start_line - 1, 0, -1)
+  api.nvim_buf_add_highlight(self.bufnr, 0, 'hlchunk', start_line - 1, 0, -1)
   api.nvim_buf_add_highlight(self.bufnr, 0, 'ActionFix', start_line, 0, #config.ui.actionfix)
   api.nvim_buf_add_highlight(self.bufnr, 0, 'SagaTitle', start_line, #config.ui.actionfix, -1)
 
